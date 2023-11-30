@@ -1,0 +1,9 @@
+{
+    "groupname" : "testgroup",
+    "myname": "mqttclient",
+    "sims" : [
+        {
+            "name" : "mqttclient"
+        }
+    ]
+}

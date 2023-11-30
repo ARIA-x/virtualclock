@@ -1,0 +1,9 @@
+{
+    "groupname" : "testgroup",
+    "myname": "app0_full",
+    "sims" : [
+        {
+            "name" : "app0_full"
+        }
+    ]
+}
