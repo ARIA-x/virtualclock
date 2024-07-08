@@ -9,6 +9,10 @@ ARIA is a federation platform that simultaneously operates disaster-related syst
 This works as expected in a specific setting
 
 ## Usage
+docker-compose.yaml at the top directory can run every test code in each container.
+or you can run each test codes with docker-compose.yaml in each directory
+
+Basically the following three steps is needed to run the virtual clock service.
 - Start MQTT broker.
 - Start the vcserver.
 - Run the simulator with the VClock library
