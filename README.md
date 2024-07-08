@@ -5,8 +5,8 @@ virtual clock function for federation
 ARIA is a federation platform that simultaneously operates disaster-related systems and simulations.
 
 ## Badge
-<img src="https://github.com/ARIA-x/virtualclock/assets/12294073/c4e00965-ff0c-4803-8b4a-a7677fe9c521" width="7%">
-This works as intended function.
+<img src="https://github.com/ARIA-x/evacuation-simulator/assets/12294073/9ecfefd8-1187-4ae7-bdd5-f182a3a34ca4" width="7%">
+This works as expected in a specific setting
 
 ## Usage
 - Start MQTT broker.
