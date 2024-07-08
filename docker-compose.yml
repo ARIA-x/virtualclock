@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+
+  broker:
+    image: eclipse-mosquitto:1.6
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+    ports:
+      - "1883:1883"
+    networks:
+      - local_bus
+      - public_bus
+
+  mqtt-client:
+    build:
+      context: ./test/mqttclient/
+    tty: true
+    volumes:
+      - .:/aria-dsl2/
+    depends_on:
+      - broker
+      - vcserver
+    networks:
+      - local_bus
+
+  app0_full:
+    build:
+      context: ./test/app0_full/
+    tty: true
+    volumes:
+      - .:/aria-dsl2/
+    depends_on:
+      - broker
+      - vcserver
+    networks:
+      - local_bus
+
+  app0_partial:
+    build:
+      context: ./test/app0_partial/
+    tty: true
+    volumes:
+      - .:/aria-dsl2/
+    depends_on:
+      - broker
+      - vcserver
+    networks:
+      - local_bus
+
+  app1_full:
+    build:
+      context: ./test/app1_full/
+    tty: true
+    volumes:
+      - .:/aria-dsl2/
+    depends_on:
+      - broker
+      - vcserver
+    networks:
+      - local_bus
+
+  app1_partial:
+    build:
+      context: ./test/app1_partial/
+    tty: true
+    volumes:
+      - .:/aria-dsl2/
+    depends_on:
+      - broker
+      - vcserver
+    networks:
+      - local_bus
+
+  vcserver:
+    build:
+      context: ./VirtualClock/vcserver
+    tty: true
+    volumes:
+      - .:/aria-dsl2/
+    depends_on:
+      - broker
+    networks:
+      - local_bus
+
+networks:
+  local_bus:
+  public_bus:
+    name: docker.aria
+    external: true

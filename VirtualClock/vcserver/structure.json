@@ -1,0 +1,11 @@
+{
+    "groupname" : "app2_full",
+    "sims" : [
+        {
+            "name" : "ball"
+        },
+        {
+            "name" : "player"
+        }
+    ]
+}

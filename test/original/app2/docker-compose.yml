@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+
+  ball:
+    build:
+      context: ./ball/
+    tty: true
+    depends_on:
+      - player
+    volumes:
+      - .:/virtualclock/
+    networks:
+      - local_bus
+
+  player:
+    build:
+      context: ./player/
+    tty: true
+    volumes:
+      - .:/virtualclock/
+    networks:
+      - local_bus
+
+networks:
+  local_bus:
+  public_bus:
+    name: docker.aria

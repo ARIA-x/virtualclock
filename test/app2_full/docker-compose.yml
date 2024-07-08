@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+
+  ball:
+    build:
+      context: ./ball/
+    tty: true
+    depends_on:
+      - player
+    volumes:
+      - ../../:/aria-dsl2/
+    networks:
+      - local_bus
+
+  player:
+    build:
+      context: ./player/
+    tty: true
+    volumes:
+      - ../../:/aria-dsl2/
+    networks:
+      - local_bus
+
+  vcserver:
+    build:
+      context: ../../VirtualClock/vcserver
+    tty: true
+    volumes:
+      - ../../:/aria-dsl2/
+    depends_on:
+      - broker
+    networks:
+      - local_bus
+
+  broker:
+    image: eclipse-mosquitto:1.6
+    volumes:
+      - ../../mosquitto.conf:/mosquitto/config/mosquitto.conf
+    ports:
+      - "1883:1883"
+    networks:
+      - local_bus
+      - public_bus
+
+networks:
+  local_bus:
+  public_bus:
+    name: docker.aria
+    external: true
