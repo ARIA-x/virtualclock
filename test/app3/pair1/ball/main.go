@@ -3,6 +3,7 @@ package main
 import (
 	"VClock"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"math"
@@ -43,9 +44,9 @@ func (p *HorizontalTrajectory) position(x float64) (float64, float64) {
 	return xd, yd
 }
 
-func send(t float64, x float64, y float64, z float64) {
+func send(t float64, x float64, y float64, z float64, sockname string) {
 	// conn := netInit("C:\\Users\\kohig\\AppData\\Local\\Temp\\catch_the_fly3")
-	conn := netInit("/aria-dsl2/catch_the_fly1")
+	conn := netInit(sockname)
 	// send data
 	bytes, _ := json.Marshal(Position{
 		T: t,
@@ -58,23 +59,24 @@ func send(t float64, x float64, y float64, z float64) {
 }
 
 type Params struct {
-	g       float64
-	v0      float64
-	h0      float64
-	dt      float64
-	t       float64
-	h       float64
-	x       float64
-	xw      float64
-	yw      float64
-	ht      HorizontalTrajectory
-	results []MotionSim
+	g        float64
+	v0       float64
+	h0       float64
+	dt       float64
+	t        float64
+	h        float64
+	x        float64
+	xw       float64
+	yw       float64
+	ht       HorizontalTrajectory
+	results  []MotionSim
+	unixsock string
 }
 
 func (p *Params) motion() {
 	// discretized expressions
 	p.results = append(p.results, MotionSim{p.t, p.xw, p.yw, p.h})
-	send(p.t, p.xw, p.yw, p.h)
+	send(p.t, p.xw, p.yw, p.h, p.unixsock)
 	// vertical trajectory
 	p.h += (-p.g*p.t + p.v0) * p.dt
 	p.t += p.dt
@@ -113,6 +115,11 @@ func main() {
 	p.xw = 0.0 // x position (with pseudo wind effect)
 	p.yw = 0.0 // y position (with pseudo wind effect)
 
+	p.unixsock = *flag.String("unixsocket", "/aria-dsl2/catch_the_fly1", "Unix soket file name for data exchange")
+	flag.Parse()
+
+	fmt.Printf("Unix socket name: %s\n", p.unixsock)
+
 	vc := VClock.Initialize("../../../../config/mqtt.conf")
 	// シミュレータで利用するスレッド数の登録
 	idList, err := vc.Register(1)
@@ -130,7 +137,7 @@ func main() {
 	// シミュレーションの最終結果を送信
 	//（粒度が粗いとボールが空中で止まった状態になるのを防ぐため）
 	// TODO: シミュレーションの終了シーケンスを改善
-	send(p.t, p.xw, p.yw, p.h)
+	send(p.t, p.xw, p.yw, p.h, p.unixsock)
 
 	// シミュレーション結果の確認
 	fmt.Printf("Simulation has done, ")

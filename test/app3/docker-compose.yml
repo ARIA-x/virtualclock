@@ -8,6 +8,7 @@ services:
     tty: true
     depends_on:
       - pair1player
+      - vcserver
     volumes:
       - ../../:/aria-dsl2/
     networks:
@@ -17,6 +18,8 @@ services:
     build:
       context: ./pair1/player/
     tty: true
+    depends_on:
+      - vcserver
     volumes:
       - ../../:/aria-dsl2/
     networks:
