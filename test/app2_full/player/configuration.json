@@ -1,5 +1,5 @@
 {
     "groupname" : "app2_full",
     "name" : "player",
-    "clockcycle" : 3
+    "clockcycle" : 1
 }

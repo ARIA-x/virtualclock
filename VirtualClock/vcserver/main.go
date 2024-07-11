@@ -5,10 +5,13 @@ import (
 	"VClockDataTypes"
 	"VClockMQTT"
 	"VClockMessageTypes"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 )
@@ -21,6 +24,77 @@ var cwg CountableWaitGroup
 
 // グローバル仮想時刻
 var globalclock int
+
+// 追加
+var (
+	logFile   *os.File
+	csvWriter *csv.Writer
+	logMutex  sync.Mutex
+	startTime time.Time
+)
+
+func initLogger() error {
+	var err error
+	logFile, err = os.OpenFile("simulation_log.csv", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	csvWriter = csv.NewWriter(logFile)
+
+	// ファイルが新規作成された場合にのみヘッダーを書き込む
+	fileInfo, err := logFile.Stat()
+	if err != nil {
+		return err
+	}
+	if fileInfo.Size() == 0 {
+		// ヘッダーを書き込む
+		err = csvWriter.Write([]string{
+			"Timestamp",
+			"ElapsedSeconds",
+			"Type",
+			"Name",
+			"ID",
+			"Clock",
+			"State",
+		})
+		if err != nil {
+			return err
+		}
+		csvWriter.Flush()
+	}
+
+	startTime = time.Now() // グローバル変数 startTime を初期化
+	return nil
+}
+
+func logEvent(eventType, name string, id, clock int, state string) {
+	logMutex.Lock()
+	defer logMutex.Unlock()
+
+	now := time.Now()
+	timestamp := now.Format("2006-01-02 15:04:05.000000")
+	elapsedSeconds := now.Sub(startTime).Seconds()
+
+	err := csvWriter.Write([]string{
+		timestamp,
+		fmt.Sprintf("%.6f", elapsedSeconds), // 経過秒数（小数点以下6桁）
+		eventType,
+		name,
+		fmt.Sprintf("%d", id),
+		fmt.Sprintf("%d", clock),
+		state,
+	})
+	if err != nil {
+		fmt.Printf("Error writing to log: %v\n", err)
+	}
+	csvWriter.Flush()
+}
+
+func closeLogger() {
+	if logFile != nil {
+		logFile.Close()
+	}
+}
 
 // MQ メッセージテスト用
 func Test(client MQTT.Client, msg MQTT.Message) {
@@ -147,6 +221,7 @@ func recvReady(client MQTT.Client, msg MQTT.Message) {
 	simulatorName := arr[len(arr)-1]
 
 	simulation.StateTransition(simulatorName, data.Id, data.Clock, Ready)
+	logEvent("Simulator", simulatorName, data.Id, data.Clock, "Ready")
 
 	// メイン関数を起動して
 	// 全インスタンスが実行準備完了か確認する
@@ -163,6 +238,7 @@ func recvDone(client MQTT.Client, msg MQTT.Message) {
 	simulatorName := arr[len(arr)-1]
 
 	simulation.StateTransition(simulatorName, data.Id, data.Clock, Done)
+	logEvent("Simulator", simulatorName, data.Id, data.Clock, "Done")
 
 	// メイン関数を起動して
 	// 全インスタンスが実行完了か確認する
@@ -180,6 +256,7 @@ func recvComplete(client MQTT.Client, msg MQTT.Message) {
 
 	fmt.Printf("[Complete] Received from %d (t=%d)\n", data.Id, data.Clock)
 	simulation.StateTransition(simulatorName, data.Id, data.Clock, Complete)
+	logEvent("Simulator", simulatorName, data.Id, data.Clock, "Complete")
 
 	if simulation.isCompleteAll() {
 		// すべてのシミュレータのインスタンスの実行が完了したらシミュレーションを終了する
@@ -205,6 +282,14 @@ func ReadSimulationStructure(filename string) VClockDataTypes.SimulationStructur
 }
 
 func main() {
+
+	// 追加
+	err := initLogger()
+	if err != nil {
+		fmt.Printf("Failed to initialize logger: %v\n", err)
+		return
+	}
+	defer closeLogger()
 
 	// 仮想時刻機能の初期化
 	mqtt := VClockMQTT.Initialize("../../config/mqtt.conf")
@@ -262,6 +347,7 @@ func main() {
 	///////// シミュレーション実行サイクル /////////
 	for {
 		fmt.Printf("Simulation clock %d ready --------- \n", globalclock)
+		logEvent("GlobalClock", "VirtualClock", -1, globalclock, "Ready")
 
 		// 実行準備完了を確認
 		for {
@@ -275,6 +361,7 @@ func main() {
 		}
 
 		fmt.Printf("Simulation clock %d start --------- \n", globalclock)
+		logEvent("GlobalClock", "VirtualClock", -1, globalclock, "Start")
 
 		// １シミュレーションサイクルを実行
 		for _, simulator := range simulation.simulators {
@@ -304,6 +391,8 @@ func main() {
 			}
 		}
 		fmt.Printf("Simulation clock %d done --------- \n", globalclock)
+		logEvent("GlobalClock", "VirtualClock", -1, globalclock, "Done")
+
 		// 次のシミュレーション実行時刻を設定
 		simulation.updateNextClock(globalclock)
 		// 次のシミュレーションサイクルに移行

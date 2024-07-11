@@ -4,10 +4,12 @@ import (
 	"VClock"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 )
 
@@ -158,10 +160,11 @@ func pointEstimation(prev Position, next Position, estimateTime float64) Point {
 	return Point{vx*estimateTime + next.X, vy*estimateTime + next.Y}
 }
 
-func update(conn net.Conn) {
+// データサイズを増加：実験用に修正
+func update(conn net.Conn, sizeFactor int) {
 	defer conn.Close()
 	//fmt.Printf("Connected: %s\n", conn.RemoteAddr().Network())
-	buf := make([]byte, 1024)
+	buf := make([]byte, 1024*sizeFactor)
 	for {
 		nr, err := conn.Read(buf)
 		if err != nil {
@@ -171,8 +174,10 @@ func update(conn net.Conn) {
 			return
 		}
 		data := buf[0:nr]
+		// データサイズを元のサイズに戻す
+		originalData := data[:len(data)/sizeFactor]
 		var pos Position
-		json.Unmarshal(data, &pos)
+		json.Unmarshal(originalData, &pos)
 		fmt.Printf("Received :T %f, X %f, Y %f, Z %f\n", pos.T, pos.X, pos.Y, pos.Z)
 
 		if ballPosition.T != -1 {
@@ -192,8 +197,8 @@ func update(conn net.Conn) {
 	}
 }
 
-// ボールの現在位置を受信するサーバ
-func server(listener net.Listener) {
+// ボールの現在位置を受信するサーバ// データサイズを増加：実験用に修正
+func server(listener net.Listener, sizeFactor int) {
 	defer listener.Close()
 
 	fmt.Println("server launched...")
@@ -202,12 +207,24 @@ func server(listener net.Listener) {
 		if err != nil {
 			fmt.Print(err.Error())
 		} else {
-			update(conn)
+			update(conn, sizeFactor)
 		}
 	}
 }
 
+// データサイズを増加：実験用に修正
 func main() {
+
+	// コマンドライン引数からnの値を取得
+	if len(os.Args) < 2 {
+		log.Fatal("Usage: go run player.go <n>")
+	}
+	n, err := strconv.Atoi(os.Args[1])
+	if err != nil {
+		log.Fatal("Invalid n value")
+	}
+
+	sizeFactor := int(math.Pow(10, float64(n)))
 
 	// Unix ソケットファイル
 	socket := "/aria-dsl2/catch_the_fly1"
@@ -222,7 +239,7 @@ func main() {
 	shutdown(listener, socket, close)
 
 	//受信サーバの用意
-	go server(listener)
+	go server(listener, sizeFactor)
 
 	// 選手の人数
 	evacuee := 1
