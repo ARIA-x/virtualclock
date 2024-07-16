@@ -2,6 +2,8 @@ package main
 
 import (
 	"VClock"
+	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,6 +13,8 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
+	"time"
+	"unsafe"
 )
 
 // 現在のボール位置
@@ -40,6 +44,11 @@ type Position struct {
 	X float64 `json:"x"`
 	Y float64 `json:"y"`
 	Z float64 `json:"z"`
+}
+
+type PacketHeader struct {
+	PayloadSize uint32
+	WindowSize  uint32
 }
 
 type Point struct{ x, y float64 }
@@ -161,54 +170,102 @@ func pointEstimation(prev Position, next Position, estimateTime float64) Point {
 }
 
 // データサイズを増加：実験用に修正
-func update(conn net.Conn, sizeFactor int) {
+var i = 0
+
+func update(conn *net.UnixConn, sizeFactor int) {
+
 	defer conn.Close()
-	//fmt.Printf("Connected: %s\n", conn.RemoteAddr().Network())
+
 	buf := make([]byte, 1024*sizeFactor)
+	hbuf := make([]byte, unsafe.Sizeof(PacketHeader{}))
+	packetheader := PacketHeader{0, 0}
+
+	//パケットヘッダの受信
+	nr, err := conn.Read(hbuf)
+	if err != nil {
+		fmt.Print(err.Error())
+	} else if (nr != int(unsafe.Sizeof(PacketHeader{}))) {
+		fmt.Printf("Mismatch received packet header size: %d (should be %d bytes)\n", nr, unsafe.Sizeof(PacketHeader{}))
+	} else {
+		reader := bytes.NewReader(hbuf)
+		binary.Read(reader, binary.LittleEndian, &packetheader)
+		fmt.Printf("------- Data Received ---------\n")
+		fmt.Printf(" payload size : %d, windows size : %d\n", packetheader.PayloadSize, packetheader.WindowSize)
+	}
+
+	//データの読み込み
+	var currentSize = 0
 	for {
-		nr, err := conn.Read(buf)
+		nr, err := conn.Read(buf[currentSize:])
 		if err != nil {
 			if err.Error() != "EOF" {
 				fmt.Print(err.Error())
 			}
 			return
+		} else {
+			fmt.Printf("socket reads %d bytes\n", nr)
 		}
-		data := buf[0:nr]
-		// データサイズを元のサイズに戻す
-		originalData := data[:len(data)/sizeFactor]
-		var pos Position
-		json.Unmarshal(originalData, &pos)
-		fmt.Printf("Received :T %f, X %f, Y %f, Z %f\n", pos.T, pos.X, pos.Y, pos.Z)
-
-		if ballPosition.T != -1 {
-			// ボールの落下予想時刻と場所を推定
-			estimateTime = timeEstimation(ballPosition, pos)
-			fmt.Printf("Estimate Time: %f\n", estimateTime)
-			// ボールの落下予想時刻と場所を更新
-			estimatePoint = pointEstimation(ballPosition, pos, estimateTime)
-			fmt.Printf("Estimate Pos: %f, %f\n", estimatePoint.x, estimatePoint.y)
+		currentSize += nr
+		if currentSize >= int(packetheader.PayloadSize) {
+			break
 		}
-
-		//ボールの位置更新
-		ballPosition.T = pos.T
-		ballPosition.X = pos.X
-		ballPosition.Y = pos.Y
-		ballPosition.Z = pos.Z
 	}
+
+	data := buf[0:currentSize]
+	// データサイズを元のサイズに戻す
+	originalData := data[:len(data)/sizeFactor]
+	fmt.Printf("[%d] nr = %d\n", i, nr)
+	fmt.Printf("[%d] len(data) = %d\n", i, len(data))
+	fmt.Printf("[%d] sizeFactor = %d\n", i, sizeFactor)
+	fmt.Printf("[%d] len/sF = %d\n", i, len(data)/sizeFactor)
+	fmt.Printf("[%d] buf(30) = %s\n", i, buf[0:30])
+	fmt.Printf("[%d] data(30) = %s\n", i, data[0:30])
+	fmt.Printf("[%d] orig = %s\n", i, originalData)
+
+	// ボールの位置データ取り出し
+	var pos Position
+	json.Unmarshal(originalData, &pos)
+	fmt.Printf("[%d] Received :T %f, X %f, Y %f, Z %f\n", i, pos.T, pos.X, pos.Y, pos.Z)
+	i++
+
+	if ballPosition.T != -1 {
+		// ボールの落下予想時刻と場所を推定
+		estimateTime = timeEstimation(ballPosition, pos)
+		fmt.Printf("Estimate Time: %f\n", estimateTime)
+		// ボールの落下予想時刻と場所を更新
+		estimatePoint = pointEstimation(ballPosition, pos, estimateTime)
+		fmt.Printf("Estimate Pos: %f, %f\n", estimatePoint.x, estimatePoint.y)
+	}
+
+	//ボールの位置更新
+	ballPosition.T = pos.T
+	ballPosition.X = pos.X
+	ballPosition.Y = pos.Y
+	ballPosition.Z = pos.Z
 }
 
 // ボールの現在位置を受信するサーバ// データサイズを増加：実験用に修正
-func server(listener net.Listener, sizeFactor int) {
+func server(listener *net.UnixListener, sizeFactor int) {
 	defer listener.Close()
 
-	fmt.Println("server launched...")
+	fmt.Println("server launched...!!")
 	for {
-		conn, err := listener.Accept()
+		conn, err := listener.AcceptUnix()
 		if err != nil {
 			fmt.Print(err.Error())
-		} else {
-			update(conn, sizeFactor)
+			return
 		}
+		fmt.Printf("Connection Request is Accepted\n")
+		// 残しておくけど、機能しなかった。。。
+		err = conn.SetReadBuffer(100000000)
+		if err != nil {
+			fmt.Print(err.Error())
+		}
+		err = conn.SetDeadline(time.Time{})
+		if err != nil {
+			fmt.Print(err.Error())
+		}
+		update(conn, sizeFactor)
 	}
 }
 
@@ -231,10 +288,22 @@ func main() {
 
 	// listen ソケット準備
 	close := make(chan int)
-	listener, err := net.Listen("unix", socket)
+	//listener, err := net.Listen("unix", socket)
+	uaddr, _ := net.ResolveUnixAddr("unix", socket)
 	if err != nil {
 		fmt.Print(err.Error(), "\n")
 	}
+	listener, err := net.ListenUnix("unix", uaddr)
+	if err != nil {
+		fmt.Print(err.Error(), "\n")
+	}
+
+	/*
+		sockfd, err := unix.Socket(unix.AF_UNIX, unix.SOCK_STREAM, 0)
+		if err != nil {
+			fmt.Print(err.Error(), "\n")
+		}
+	*/
 	// プログラム終了時の後片付け
 	shutdown(listener, socket, close)
 
@@ -297,6 +366,7 @@ func main() {
 	<-close
 }
 
+//func shutdown(listener net.Listener, tempfile string, close chan int) {
 func shutdown(listener net.Listener, tempfile string, close chan int) {
 	c := make(chan os.Signal, 2)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)

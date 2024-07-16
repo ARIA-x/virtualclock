@@ -2,6 +2,8 @@ package main
 
 import (
 	"VClock"
+	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -27,6 +29,11 @@ type MotionSim struct {
 
 type HorizontalTrajectory struct {
 	angle float64
+}
+
+type PacketHeader struct {
+	PayloadSize uint32
+	WindowSize  uint32
 }
 
 func netInit(socket string) net.Conn {
@@ -57,6 +64,7 @@ func increaseDataSize(baseData []byte, factor int) []byte {
 // データサイズを増加：実験用に修正
 func send(t float64, x float64, y float64, z float64, sizeFactor int) {
 	// conn := netInit("C:\\Users\\kohig\\AppData\\Local\\Temp\\catch_the_fly3")
+
 	conn := netInit("/aria-dsl2/catch_the_fly1")
 	// send data
 	baseData, _ := json.Marshal(Position{
@@ -66,7 +74,31 @@ func send(t float64, x float64, y float64, z float64, sizeFactor int) {
 		Z: z,
 	})
 	enlargedData := increaseDataSize(baseData, sizeFactor)
-	conn.Write(enlargedData)
+	fmt.Printf("----- sizeFactor: %d\n", sizeFactor)
+	fmt.Printf("Send(basedata): %s\n", baseData)
+
+	// ヘッダの送信
+	pheader := PacketHeader{
+		PayloadSize: uint32(len(enlargedData)),
+		WindowSize:  0,
+	}
+	hbuf := new(bytes.Buffer)
+	binary.Write(hbuf, binary.LittleEndian, pheader)
+
+	_, err := conn.Write(hbuf.Bytes())
+	if err != nil {
+		fmt.Print(err.Error())
+	} else {
+		fmt.Printf("Send Header, payloadsize: %d, windowsize: %d\n", pheader.PayloadSize, pheader.WindowSize)
+	}
+
+	// ペイロードの送信
+	n, err := conn.Write(enlargedData)
+	if err != nil {
+		fmt.Print(err.Error())
+	} else {
+		fmt.Printf("Send size: %d\n", n)
+	}
 	conn.Close()
 }
 
